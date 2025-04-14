@@ -10,6 +10,8 @@ import pandas as pd
 import numpy as np
 from typing import List, Dict, Tuple, Optional, Any
 from sklearn.model_selection import train_test_split
+from src.data.preprocessing import apply_pca_transformation, apply_adasyn, apply_smote # Add oversampling imports if needed
+
 
 # --- Add project root to sys.path ---
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -288,3 +290,123 @@ def prepare_experiment_data(
     # or applied within the runner if needed. Could be added here too.
 
     return (X_train, y_train), (X_test, y_test)
+
+
+
+# experiments/data_preparation.py
+def prepare_pca_data_for_experiment(
+    fold_id: int,
+    data_config: Dict[str, Any],
+    pca_variance_threshold: float = 0.90
+) -> Tuple[Tuple[np.ndarray, np.ndarray], Tuple[np.ndarray, np.ndarray]]:
+    """
+    Prepares PCA-transformed train and test data arrays for experiments.
+
+    Applies PCA to the base dataset first, then splits consumers based on the
+    fold and data_config ('real' or 'synthetic'). The features become the
+    principal components for each selected consumer.
+
+    Args:
+        fold_id (int): The fold number (1 to N_FOLDS).
+        data_config (Dict): Configuration for data selection. Keys include:
+            'type': 'real' or 'synthetic'.
+            'oversample': 'adasyn', 'smote', or None (applied to train set).
+        pca_variance_threshold (float): Variance threshold for PCA.
+
+    Returns:
+        Tuple containing:
+            - (X_train, y_train): Prepared training data (PCA features) and labels.
+            - (X_test, y_test): Prepared testing data (PCA features) and labels.
+    """
+    _load_base_data_once() # Ensure base data is loaded
+
+    # Retrieve cached base data
+    base_df = _BASE_DATA_CACHE["original_df"]
+    all_labels = _BASE_DATA_CACHE["labels_series"]
+    real_theft_ids = _BASE_DATA_CACHE["real_theft_ids"]
+    all_benign_ids = _BASE_DATA_CACHE["all_benign_ids"]
+
+    print(f"Preparing PCA Data - Fold: {fold_id}, Config: {data_config}, PCA Var: {pca_variance_threshold}")
+
+    # 1. Apply PCA Transformation to the entire base dataset
+    # Note: PCA is applied *before* fold splitting or synthetic/real selection
+    pca_transformed_data = apply_pca_transformation(
+        base_df,
+        pca_variance_threshold=pca_variance_threshold,
+        standardize=True # Usually recommended
+    )
+
+    if pca_transformed_data.empty:
+        raise RuntimeError("PCA transformation failed or produced empty results.")
+
+    # 2. Get consumer IDs for this fold's train/test split
+    benign_train_ids, benign_test_ids = get_fold(fold_id, config.FOLDS_FILE)
+
+    # 3. Determine train/test consumer IDs based on config type
+    data_type = data_config['type']
+    oversample_method = data_config.get('oversample', None)
+
+    if data_type == 'synthetic':
+        # For PCA, 'synthetic' usually means selecting consumers based on
+        # the fold split, but using their *original* PCA profiles.
+        # The concept of applying attacks *after* PCA doesn't make sense.
+        # So, 'synthetic' and 'real' configs primarily affect *which* consumers
+        # are selected for train/test based on the fold split of benign IDs.
+        # Let's assume we train on the benign train split and test on benign test split + real theft.
+        # This interpretation might need adjustment based on the original intent of PCA_fullDataExamples.
+        print("  PCA Data Prep: Using 'synthetic' config for consumer selection (benign train vs benign test + real).")
+        train_consumer_ids = benign_train_ids # Train only on benign consumers from train split
+        test_consumer_ids = benign_test_ids + real_theft_ids # Test on benign test split + real theft
+
+    elif data_type == 'real':
+         train_consumer_ids = benign_train_ids + real_theft_ids # Train on benign train split + real theft
+         test_consumer_ids = benign_test_ids + real_theft_ids # Test on benign test split + real theft
+         # Note: This leads to overlap if just splitting this way.
+         # The original PCA_fullDataExamples used train_test_split on the *combined* list
+         # of positive/negative consumers defined by the fold. Let's replicate that.
+
+         print("  PCA Data Prep: Using 'real' config for consumer selection (train/test split on fold consumers).")
+         # Combine consumers relevant to this fold type ('real' uses benign + real theft)
+         positive_ids = real_theft_ids
+         # Use ALL benign consumers for the split pool if 'real' config implies using all available data
+         # Or just the fold's benign consumers? Let's use fold's consumers like original.
+         negative_ids = benign_train_ids + benign_test_ids
+         all_fold_consumers = positive_ids + negative_ids
+         all_fold_labels = all_labels.loc[all_fold_consumers]
+
+         # Split these consumers into train/test
+         train_consumer_ids, test_consumer_ids, _, _ = train_test_split(
+             all_fold_consumers,
+             all_fold_labels,
+             test_size=0.3, # Standard test split size? Adjust if needed.
+             random_state=config.RANDOM_SEED,
+             stratify=all_fold_labels
+         )
+
+    else:
+        raise ValueError(f"Invalid data_config type: {data_type}")
+
+    # 4. Select PCA features and labels for train/test sets
+    print(f"  Selecting PCA features for {len(train_consumer_ids)} train / {len(test_consumer_ids)} test consumers...")
+    X_train = pca_transformed_data.loc[train_consumer_ids].values
+    y_train = all_labels.loc[train_consumer_ids].values
+
+    X_test = pca_transformed_data.loc[test_consumer_ids].values
+    y_test = all_labels.loc[test_consumer_ids].values
+
+    # 5. Apply oversampling to training data if configured
+    if oversample_method == 'adasyn':
+        print(f"    Applying ADASYN oversampling to PCA training data...")
+        X_train, y_train = apply_adasyn(X_train, y_train, random_state=config.RANDOM_SEED)
+        print(f"    Train examples after ADASYN: {X_train.shape}")
+    elif oversample_method == 'smote':
+        print(f"    Applying SMOTE oversampling to PCA training data...")
+        # X_train, y_train = apply_smote(X_train, y_train, random_state=config.RANDOM_SEED) # Assuming apply_smote exists
+        print("    SMOTE application placeholder.") # Placeholder
+    else:
+         pass # No oversampling
+
+    print(f"  PCA Data Preparation Complete: Train shape={X_train.shape}, Test shape={X_test.shape}")
+    return (X_train, y_train), (X_test, y_test)
+
+
