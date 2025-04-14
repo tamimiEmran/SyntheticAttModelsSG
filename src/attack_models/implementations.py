@@ -25,7 +25,9 @@ from experiments.config import ATTACK_CONSTANTS # Import the constants
 def weekinmonth(dates: pd.Series) -> pd.Series:
     """Get week number in a month (1-based). Helper for Attack 10/12 Month."""
     # Ensure dates are datetime objects
-    if not pd.api.types.is_datetime64_any_dtype(dates):
+    if isinstance(dates, pd.DatetimeIndex):
+        dates = pd.Series(dates)  # Convert DatetimeIndex to Series for .dt accessor
+    elif not pd.api.types.is_datetime64_any_dtype(dates):
         dates = pd.to_datetime(dates, errors='coerce')
         if dates.isna().any():
             raise ValueError("Could not convert dates index to datetime in weekinmonth")
