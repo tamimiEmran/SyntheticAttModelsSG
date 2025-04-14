@@ -1,0 +1,35 @@
+# requirements.txt
+
+# Core Data Handling & Numerics
+numpy>=1.21 # Widely used, specify a reasonable minimum
+pandas>=1.3 # For dataframes
+scipy>=1.7 # For stats (skew, kurtosis, iqr)
+
+# Machine Learning Models
+scikit-learn>=1.0 # For SVM, RF, KNN, PCA, Scalers, metrics, model_selection
+xgboost>=1.5 # XGBoost model
+catboost>=1.0 # CatBoost model
+# intel-extension-for-sklearn # Optional, was used in original for patching
+
+# Imbalanced Data Handling
+imbalanced-learn>=0.9 # For SMOTE, ADASYN
+
+# Hyperparameter Tuning
+optuna>=2.10 # For hyperparameter optimization
+
+# Plotting & Visualization
+matplotlib>=3.4
+seaborn>=0.11 # For heatmaps, enhanced plots
+
+# Progress Bars
+tqdm>=4.60
+
+# HDF5 File Support (needed by pandas.to_hdf/read_hdf)
+tables>=3.6 # PyTables backend for HDF5
+
+# Optional: If using specific features from DTAIDistance in other parts
+# dtaidistance
+
+# Optional: For packaging itself
+# setuptools
+# wheel
