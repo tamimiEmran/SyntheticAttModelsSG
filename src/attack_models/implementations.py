@@ -20,25 +20,40 @@ from typing import Union
 
 from .base import BaseAttackModel
 from experiments.config import ATTACK_CONSTANTS # Import the constants
-
-# Helper function from original code
-def weekinmonth(dates: pd.Series) -> pd.Series:
-    """Get week number in a month (1-based). Helper for Attack 10/12 Month."""
+def week_in_month_year(dates: pd.Series) -> pd.Series:
+    """
+    Get a unique identifier for weeks that respects year and month boundaries.
+    Returns a string identifier in format 'YYYY-MM-W' where W is the week number (1-based) within that month.
+    
+    Args:
+        dates: DatetimeIndex or Series of datetime values
+    
+    Returns:
+        Series of strings identifying each unique week in format 'YYYY-MM-W'
+    """
     # Ensure dates are datetime objects
     if isinstance(dates, pd.DatetimeIndex):
         dates = pd.Series(dates)  # Convert DatetimeIndex to Series for .dt accessor
     elif not pd.api.types.is_datetime64_any_dtype(dates):
         dates = pd.to_datetime(dates, errors='coerce')
-        if dates.isna().any():
-            raise ValueError("Could not convert dates index to datetime in weekinmonth")
+    
+    # Check for NaN values
+    if dates.isna().any():
+        raise ValueError("Could not convert dates index to datetime in week_in_month_year")
 
     # Calculate the first day of the month for each date
     firstday_in_month = dates - pd.to_timedelta(dates.dt.day - 1, unit='d')
-    # Calculate the week number
-    # (day_of_month - 1 + weekday_of_first_day) // 7 + 1
-    return (dates.dt.day - 1 + firstday_in_month.dt.weekday) // 7 + 1
+    
+    # Calculate the week number within the month (1-based)
+    week_num = (dates.dt.day - 1 + firstday_in_month.dt.weekday) // 7 + 1
+    
+    # Create unique identifier combining year, month, and week number
+    year_month_week = (dates.dt.year.astype(str) + '-' + 
+                       dates.dt.month.astype(str).str.zfill(2) + '-W' + 
+                       week_num.astype(str))
+    
+    return year_month_week
 
-# --- Concrete Attack Implementations ---
 
 class AttackType0(BaseAttackModel):
     """Attack Type 0: Zero consumption (Original _attack0)"""
@@ -262,18 +277,40 @@ class AttackType10(BaseAttackModel):
                   data.index = pd.to_datetime(data.index)
              except Exception as e:
                   print(f"Error converting index to DatetimeIndex for Attack 10: {e}. Returning original data.")
-                  return data
+                  raise ValueError("Index conversion failed.")
 
+        # Get readings for the first day in the dataset
+               
+
+        day_data = data.index.date[0]
+        len_day_data = len(data.index[data.index.date == day_data])
         modified_data = data.copy()
+        # If readings per day > 32, it's likely Ausgrid (30-min intervals)
+        # Otherwise, it's likely SGCC (daily readings)
+        if len_day_data > 1:
+            print(f"ausgrid: data head {modified_data.head()}")
+            weekly_groups = modified_data.groupby(modified_data.index.date)
+            print(f"ausgrid: The number of grouped data is {len(weekly_groups)}")
+            print(f"ausgrid: groups mean is {weekly_groups.mean().head()}")
+        else:
+            print(f"SGCC: data head {modified_data.head()}")
+            weekly_groups = modified_data.groupby(week_in_month_year(modified_data.index))
+            print(f"SGCC: The number of grouped data is {len(weekly_groups)}")
+            print(f"SGCC: groups mean is {weekly_groups.mean().head()}")
+
+
+
+        
         # Group by week number within the month
-        weekly_groups = modified_data.groupby(weekinmonth(modified_data.index))
+        # Note: weekinmonth function assumes the index is a DatetimeIndex and that the dataset is sgcc
+
 
         processed_weeks = []
         original_indices = []
         for week_num, week_data in weekly_groups:
              if not week_data.empty:
-                  # Apply flipud (axis=0 flips rows) to the numpy array of the week's data
-                  flipped_values = np.flipud(week_data.values)
+                  
+                  flipped_values = week_data.values[::-1] # Reverse the values for this week
                   # Create a new DataFrame with flipped values but original index/columns for this week
                   flipped_week = pd.DataFrame(flipped_values, index=week_data.index, columns=week_data.columns)
                   processed_weeks.append(flipped_week)
@@ -408,10 +445,25 @@ class AttackType12(BaseAttackModel):
              except Exception as e:
                   print(f"Error converting index to DatetimeIndex for Attack 12: {e}. Returning original data.")
                   return data
-
+             
         modified_data = data.copy()
+        # Get readings for the first day in the dataset
+        day_data = data.index.day[0]
+        len_day_data = len(data.index[data.index.day == day_data])
+
+        # If readings per day > 32, it's likely Ausgrid (30-min intervals)
+        # Otherwise, it's likely SGCC (daily readings)
+        if len_day_data > 32:
+            weekly_groups = modified_data.groupby(modified_data.index.date)
+        else:
+            weekly_groups = modified_data.groupby(week_in_month_year(modified_data.index))
+
+
+
+
+        
         # Group by week number within the month
-        weekly_groups = modified_data.groupby(weekinmonth(modified_data.index))
+        
 
         processed_weeks = []
         for week_num, week_data in weekly_groups:

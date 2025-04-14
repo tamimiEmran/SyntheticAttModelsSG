@@ -192,39 +192,40 @@ def load_ausgrid_data(
     # Optional: backward fill any remaining NAs at the beginning
     ausgrid_combined_df = ausgrid_combined_df.bfill()
 
+    #to standaradize the format with SGCC data. The dataset will be transposed such that 
+    # consumers are rows and time is columns.
+    ausgrid_combined_df = ausgrid_combined_df.T
+
     return ausgrid_combined_df
 
 
-# Example Usage (commented out)
-# if __name__ == "__main__":
-#     # SGCC Example
-#     sgcc_data_path = r"D:\evaluateAttacks\data.csv" # Adjust path as needed
-#     try:
-#         sgcc_df, sgcc_labels = load_sgcc_data(sgcc_data_path)
-#         print("SGCC Data Loaded:")
-#         print(sgcc_df.head())
-#         print("\nSGCC Labels:")
-#         print(sgcc_labels.head())
-#         print(f"\nShape: {sgcc_df.shape}, Labels count: {len(sgcc_labels)}")
-#         print(f"Theft count: {sgcc_labels.sum()}")
-#     except FileNotFoundError as e:
-#         print(e)
-#     except ValueError as e:
-#         print(e)
+if __name__ == "__main__":
+    sgcc_data_path = r"C:\Users\emran\syntheticAtts\SyntheticAttModelsSG\data\raw\sgcc_data.csv"
+    try:
+        sgcc_df, sgcc_labels = load_sgcc_data(sgcc_data_path)
+        print("SGCC Data Loaded:")
+        print(sgcc_df.head())
+        print("\nSGCC Labels:")
+        print(sgcc_labels.head())
+        print(f"\nShape: {sgcc_df.shape}, Labels count: {len(sgcc_labels)}")
+        print(f"Theft count: {sgcc_labels.sum()}")
+    except FileNotFoundError as e:
+        print(e)
+    except ValueError as e:
+        print(e)
 
-#     # Ausgrid Example
-#     ausgrid_dirs = [
-#         r'path\to\ausgrid2010', # Adjust paths as needed
-#         r'path\to\ausgrid2011',
-#         r'path\to\ausgrid2012'
-#     ]
-#     try:
-#         ausgrid_df = load_ausgrid_data(ausgrid_dirs)
-#         print("\nAusgrid Data Loaded:")
-#         print(ausgrid_df.head())
-#         print(f"\nShape: {ausgrid_df.shape}")
-#         print(f"NA count after ffill: {ausgrid_df.isna().sum().sum()}")
-#     except FileNotFoundError as e:
-#         print(e)
-#     except ValueError as e:
-#         print(e)
+    ausgrid_dirs = [
+        r'C:\Users\emran\syntheticAtts\SyntheticAttModelsSG\data\raw\ausgrid\ausgrid2010',
+        r'C:\Users\emran\syntheticAtts\SyntheticAttModelsSG\data\raw\ausgrid\ausgrid2011',
+        r'C:\Users\emran\syntheticAtts\SyntheticAttModelsSG\data\raw\ausgrid\ausgrid2012'
+    ]
+    try:
+        ausgrid_df = load_ausgrid_data(ausgrid_dirs)
+        print("\nAusgrid Data Loaded:")
+        print(ausgrid_df.head())
+        print(f"\nShape: {ausgrid_df.shape}")
+        print(f"NA count after ffill: {ausgrid_df.isna().sum().sum()}")
+    except FileNotFoundError as e:
+        print(e)
+    except ValueError as e:
+        print(e)
