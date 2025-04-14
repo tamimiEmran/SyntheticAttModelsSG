@@ -77,8 +77,13 @@ ATTACK_IDS_ALL = [*[str(i) for i in range(13)], 'ieee']
 DEFAULT_METRICS = ['Accuracy', 'Precision', 'Recall', 'F1', 'ROC-AUC']
 
 
-# --- You can add more specific configurations as needed ---
-# For example:
-# PCA_VARIANCE_THRESHOLD = 0.9
-# OVERSAMPLING_METHOD = 'adasyn' # 'smote', 'adasyn', or None
-# ZERO_FILTERING_THRESHOLD = 10 # Max zeros allowed per example
+ATTACK_CONSTANTS = {
+    "attack1range": [0.1, 0.8],         # Range for multiplicative noise/scaling (Attacks 1, 3, 6, 7)
+    "AttackReading": 7,                # Window size in readings (used in Attacks 2, 4, 8, 11). Note: Original was 1*7. Seems small if daily readings=48? Verify context.
+    "i_max": [0.3, 1.0],               # Range for max reduction factor (Attack 8)
+    "attack11Factor": 0.3,             # Reduction factor for peak window (Attack 11) - implies 70% theft?
+    "attack4": [0.1, 0.9],             # Range for multiplicative factor in window (Attack 4)
+    "attack5": [0.1, 0.9],             # Range for factor applied to mean (Attack 5)
+    "rocAttIntense": [0.05, 0.1],      # Range for ramp intensity (Attack 8)
+    "attack12Factor": 0.4,             # Factor for comparing sums (Attack 12) - Note: Original was 1.1 in placeholder description, actual is 0.4
+}
