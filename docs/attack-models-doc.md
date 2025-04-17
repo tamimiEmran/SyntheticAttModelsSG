@@ -18,7 +18,7 @@ Our project implements 14 different attack models (numbered 0-13), each represen
 ```
 m₀(t) = 0
 ```
-
+ 
 **Implementation Details**:
 - Simply replaces all consumption values with zero
 - When applied to monthly consumption data, all days in the month are set to zero
