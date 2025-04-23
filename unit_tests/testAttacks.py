@@ -53,73 +53,45 @@ class TestAttackVisualizations(unittest.TestCase):
         cls.sgcc_labels = None
         cls.ausgrid_df = None
 
-        # --- Load SGCC data ---
-        # Adjust path relative to project root or use an absolute path/environment variable
-        sgcc_data_path = os.path.join(PROJECT_ROOT, 'data', 'raw', 'sgcc_data.csv')
-        if os.path.exists(sgcc_data_path):
-            try:
-                cls.sgcc_df, cls.sgcc_labels = load_sgcc_data(sgcc_data_path)
-                #print the head of the loaded data for debugging
-                logging.info(f"SGCC data loaded successfully: {cls.sgcc_df.head()}")
-                if cls.sgcc_df is not None and not cls.sgcc_df.empty:
-                    logging.info(f"SGCC data loaded successfully: {cls.sgcc_df.shape}")
-                    # Basic check: Ensure numeric data
-                    if not pd.api.types.is_numeric_dtype(cls.sgcc_df.iloc[:, 0]):
-                         logging.warning("SGCC data might not be numeric. Attacks may fail.")
-                else:
-                     logging.warning("SGCC data loaded but is None or empty.")
-                     cls.sgcc_df = None # Ensure it's None if empty
-            except FileNotFoundError:
-                logging.warning(f"SGCC data file not found at {sgcc_data_path}. Tests using SGCC data will be skipped.")
-            except ValueError as e:
-                logging.error(f"Error loading SGCC data: {e}")
-            except Exception as e:
-                logging.error(f"An unexpected error occurred loading SGCC data: {e}")
-        else:
-            logging.warning(f"SGCC data file not found at {sgcc_data_path}. Tests using SGCC data will be skipped.")
+        # --- Load SGCC data ---        
+        try:
+            cls.sgcc_df, cls.sgcc_labels = load_sgcc_data()
+            #print the head of the loaded data for debugging
+            logging.info(f"SGCC data loaded successfully: {cls.sgcc_df.head()}")
+            if cls.sgcc_df is not None and not cls.sgcc_df.empty:
+                logging.info(f"SGCC data loaded successfully: {cls.sgcc_df.shape}")
+                # Basic check: Ensure numeric data
+                if not pd.api.types.is_numeric_dtype(cls.sgcc_df.iloc[:, 0]):
+                        logging.warning("SGCC data might not be numeric. Attacks may fail.")
+            else:
+                    logging.warning("SGCC data loaded but is None or empty.")
+                    cls.sgcc_df = None # Ensure it's None if empty
+        except ValueError as e:
+            logging.error(f"Error loading SGCC data: {e}")
+        except Exception as e:
+            logging.error(f"An unexpected error occurred loading SGCC data: {e}")
 
         # --- Load Ausgrid data ---
-        # Adjust paths as needed
-        ausgrid_base_dir = os.path.join(PROJECT_ROOT, 'data', 'raw', 'ausgrid')
-        ausgrid_dirs = [
-            os.path.join(ausgrid_base_dir, 'ausgrid2010'),
-            os.path.join(ausgrid_base_dir, 'ausgrid2011'),
-            os.path.join(ausgrid_base_dir, 'ausgrid2012')
-        ]
-        # Check if *all* required directories exist before attempting load
-        if all(os.path.isdir(d) for d in ausgrid_dirs):
-             # Check if the specific expected CSV files exist within those directories
-            expected_files = [
-                os.path.join(ausgrid_dirs[0], 'ausgrid2010.csv'),
-                os.path.join(ausgrid_dirs[1], 'ausgrid2011.csv'),
-                os.path.join(ausgrid_dirs[2], 'ausgrid2012.csv'),
-            ]
-            if all(os.path.isfile(f) for f in expected_files):
-                try:
-                    # Assuming filenames and formats align with the loader defaults
-                    cls.ausgrid_df = load_ausgrid_data(ausgrid_dirs)
-                    # Print the head of the loaded data for debugging
-                    logging.info(f"Ausgrid data loaded successfully: {cls.ausgrid_df.head()}")
-                    if cls.ausgrid_df is not None and not cls.ausgrid_df.empty:
-                        logging.info(f"Ausgrid data loaded successfully: {cls.ausgrid_df.shape}")
-                        # Basic check: Ensure numeric data and DatetimeIndex
-                        if not isinstance(cls.ausgrid_df.index, pd.DatetimeIndex):
-                             logging.warning("Ausgrid data index is not DatetimeIndex. Time-based plots might fail.")
-                        if not pd.api.types.is_numeric_dtype(cls.ausgrid_df.iloc[:, 0]):
-                             logging.warning("Ausgrid data might not be numeric. Attacks may fail.")
-                    else:
-                         logging.warning("Ausgrid data loaded but is None or empty.")
-                         cls.ausgrid_df = None # Ensure it's None if empty
-                except FileNotFoundError: # Should be caught by earlier check, but good practice
-                    logging.warning(f"One or more Ausgrid files not found in specified directories. Tests using Ausgrid data will be skipped.")
-                except ValueError as e:
-                    logging.error(f"Error loading Ausgrid data (check date formats or file structure): {e}")
-                except Exception as e:
-                    logging.error(f"An unexpected error occurred loading Ausgrid data: {e}")
+        try:
+            cls.ausgrid_df = load_ausgrid_data()
+            # Print the head of the loaded data for debugging
+            logging.info(f"Ausgrid data loaded successfully: {cls.ausgrid_df.head()}")
+            if cls.ausgrid_df is not None and not cls.ausgrid_df.empty:
+                logging.info(f"Ausgrid data loaded successfully: {cls.ausgrid_df.shape}")
+                # Basic check: Ensure numeric data and DatetimeIndex
+                if not isinstance(cls.ausgrid_df.index, pd.DatetimeIndex):
+                        logging.warning("Ausgrid data index is not DatetimeIndex. Time-based plots might fail.")
+                if not pd.api.types.is_numeric_dtype(cls.ausgrid_df.iloc[:, 0]):
+                        logging.warning("Ausgrid data might not be numeric. Attacks may fail.")
             else:
-                 logging.warning(f"Required Ausgrid CSV files not found in directories: {ausgrid_dirs}. Skipping Ausgrid tests.")
-        else:
-            logging.warning(f"One or more Ausgrid directories not found: {ausgrid_dirs}. Skipping Ausgrid tests.")
+                    logging.warning("Ausgrid data loaded but is None or empty.")
+                    cls.ausgrid_df = None # Ensure it's None if empty
+        except FileNotFoundError: # Should be caught by earlier check, but good practice
+            logging.warning(f"One or more Ausgrid files not found in specified directories. Tests using Ausgrid data will be skipped.")
+        except ValueError as e:
+            logging.error(f"Error loading Ausgrid data (check date formats or file structure): {e}")
+        except Exception as e:
+            logging.error(f"An unexpected error occurred loading Ausgrid data: {e}")
 
 
     def _select_data_window(self, df: pd.DataFrame, num_points: int = 150) -> pd.DataFrame:
@@ -337,157 +309,6 @@ class TestAttackVisualizations(unittest.TestCase):
 
         # Test passes if at least one attack could be visualized
         self.assertGreater(successful_attacks, 0, "No attacks were successfully visualized for SGCC.")
-'''
-    def test_compare_attack_impacts(self):
-        """Compare statistical impacts (reduction, peak change) across attacks and datasets."""
-        if self.sgcc_df is None or self.ausgrid_df is None:
-            self.skipTest("Both SGCC and Ausgrid data are required for impact comparison. Skipping.")
-
-        attack_ids = list_available_attacks()
-        if not attack_ids:
-            self.skipTest("No available attacks found to test.")
-
-        # Metrics to track
-        metrics = ['energy_reduction_pct', 'max_reading_change_pct', 'std_dev_change_pct']
-        results = {
-            'ausgrid': {metric: [] for metric in metrics},
-            'sgcc': {metric: [] for metric in metrics}
-        }
-
-        # --- Prepare Data Samples ---
-        # Ausgrid: Use first ~week (336 points) or less if dataset is smaller
-        ausgrid_sample_size = min(len(self.ausgrid_df), 48 * 7)
-        ausgrid_sample = self.ausgrid_df.iloc[:ausgrid_sample_size].copy()
-        if ausgrid_sample.empty: self.fail("Ausgrid sample is empty.")
-
-        # SGCC: Transpose and use first ~100 points or less
-        try:
-            sgcc_df_transposed = self.sgcc_df.T
-            sgcc_df_transposed.index = pd.to_datetime(sgcc_df_transposed.index, errors='coerce')
-            sgcc_df_transposed = sgcc_df_transposed.dropna(axis=0, how='all', subset=None)
-            sgcc_df_transposed.columns = sgcc_df_transposed.columns.astype(str)
-        except Exception as e:
-            self.fail(f"Failed to transpose SGCC data for comparison: {e}")
-
-        sgcc_sample_size = min(len(sgcc_df_transposed), 100)
-        sgcc_sample = sgcc_df_transposed.iloc[:sgcc_sample_size].copy()
-        if sgcc_sample.empty: self.fail("SGCC sample (transposed) is empty.")
-
-        # Calculate baseline metrics (sum over all consumers in the sample)
-        # Ausgrid
-        orig_energy_ausgrid = ausgrid_sample.sum().sum()
-        orig_max_ausgrid = ausgrid_sample.max().max() # Max reading anywhere in the sample
-        orig_std_ausgrid = ausgrid_sample.std(axis=0).mean() # Avg std dev across consumers
-        # SGCC
-        orig_energy_sgcc = sgcc_sample.sum().sum()
-        orig_max_sgcc = sgcc_sample.max().max()
-        orig_std_sgcc = sgcc_sample.std(axis=0).mean()
-
-        # --- Apply Attacks and Calculate Metrics ---
-        for attack_id in attack_ids:
-            attack_model = None
-            try:
-                attack_model = get_attack_model(attack_id)
-                attack_name = attack_model.__class__.__name__
-                logging.info(f"Comparing impact of Attack {attack_id} ({attack_name})")
-
-                # Process Ausgrid
-                attacked_ausgrid = attack_model.apply(ausgrid_sample.copy())
-                att_energy_ausgrid = attacked_ausgrid.sum().sum()
-                att_max_ausgrid = attacked_ausgrid.max().max()
-                att_std_ausgrid = attacked_ausgrid.std(axis=0).mean()
-
-                results['ausgrid']['energy_reduction_pct'].append(
-                    ((orig_energy_ausgrid - att_energy_ausgrid) / orig_energy_ausgrid * 100) if orig_energy_ausgrid else 0
-                )
-                results['ausgrid']['max_reading_change_pct'].append(
-                    ((orig_max_ausgrid - att_max_ausgrid) / orig_max_ausgrid * 100) if orig_max_ausgrid else 0
-                )
-                results['ausgrid']['std_dev_change_pct'].append(
-                    ((orig_std_ausgrid - att_std_ausgrid) / orig_std_ausgrid * 100) if orig_std_ausgrid else 0
-                )
-
-                # Process SGCC
-                attacked_sgcc = attack_model.apply(sgcc_sample.copy())
-                att_energy_sgcc = attacked_sgcc.sum().sum()
-                att_max_sgcc = attacked_sgcc.max().max()
-                att_std_sgcc = attacked_sgcc.std(axis=0).mean()
-
-                results['sgcc']['energy_reduction_pct'].append(
-                    ((orig_energy_sgcc - att_energy_sgcc) / orig_energy_sgcc * 100) if orig_energy_sgcc else 0
-                )
-                results['sgcc']['max_reading_change_pct'].append(
-                    ((orig_max_sgcc - att_max_sgcc) / orig_max_sgcc * 100) if orig_max_sgcc else 0
-                )
-                results['sgcc']['std_dev_change_pct'].append(
-                     ((orig_std_sgcc - att_std_sgcc) / orig_std_sgcc * 100) if orig_std_sgcc else 0
-                )
-
-            except Exception as e:
-                logging.error(f"Error applying attack {attack_id} during impact comparison: {e}")
-                # Append NaN for failed attacks to keep lists aligned
-                for dataset in ['ausgrid', 'sgcc']:
-                    for metric in metrics:
-                        results[dataset][metric].append(np.nan)
-
-        # --- Generate Comparison Plots ---
-        self.assertEqual(len(results['ausgrid']['energy_reduction_pct']), len(attack_ids), "Result length mismatch for Ausgrid")
-        self.assertEqual(len(results['sgcc']['energy_reduction_pct']), len(attack_ids), "Result length mismatch for SGCC")
-
-        for metric in metrics:
-            fig, axes = plt.subplots(1, 2, figsize=(20, 7), sharey=True) # Share Y axis for direct comparison
-            metric_name = metric.replace('_', ' ').title()
-
-            # Plot Ausgrid
-            ax_ausgrid = axes[0]
-            values_ausgrid = results['ausgrid'][metric]
-            bars_ausgrid = ax_ausgrid.bar(attack_ids, values_ausgrid, color='skyblue')
-            ax_ausgrid.set_title(f'{metric_name} (Ausgrid Sample)')
-            ax_ausgrid.set_xlabel('Attack ID')
-            ax_ausgrid.set_ylabel('Percentage Change (%)')
-            ax_ausgrid.grid(True, axis='y', linestyle='--', alpha=0.6)
-            ax_ausgrid.axhline(0, color='black', linewidth=0.8)
-            ax_ausgrid.tick_params(axis='x', rotation=45)
-            # Add value labels
-            for bar, value in zip(bars_ausgrid, values_ausgrid):
-                 if not np.isnan(value):
-                     yval = bar.get_height()
-                     ax_ausgrid.text(bar.get_x() + bar.get_width()/2.0, yval, f'{value:.1f}%', va='bottom' if yval >= 0 else 'top', ha='center', fontsize=9)
-
-
-            # Plot SGCC
-            ax_sgcc = axes[1]
-            values_sgcc = results['sgcc'][metric]
-            bars_sgcc = ax_sgcc.bar(attack_ids, values_sgcc, color='lightcoral')
-            ax_sgcc.set_title(f'{metric_name} (SGCC Sample - Transposed)')
-            ax_sgcc.set_xlabel('Attack ID')
-            # ax_sgcc.set_ylabel('Percentage Change (%)') # Shared Y
-            ax_sgcc.grid(True, axis='y', linestyle='--', alpha=0.6)
-            ax_sgcc.axhline(0, color='black', linewidth=0.8)
-            ax_sgcc.tick_params(axis='x', rotation=45)
-            # Add value labels
-            for bar, value in zip(bars_sgcc, values_sgcc):
-                 if not np.isnan(value):
-                     yval = bar.get_height()
-                     ax_sgcc.text(bar.get_x() + bar.get_width()/2.0, yval, f'{value:.1f}%', va='bottom' if yval >= 0 else 'top', ha='center', fontsize=9)
-
-            # Adjust ylim slightly for labels
-            ymin, ymax = ax_ausgrid.get_ylim()
-            padding = (ymax - ymin) * 0.1 # 10% padding
-            ax_ausgrid.set_ylim(ymin - padding, ymax + padding)
-            # ax_sgcc.set_ylim(ymin - padding, ymax + padding) # Applied by sharey=True
-
-
-            fig.suptitle(f"Comparison of Attack Impact Metric: {metric_name}", fontsize=16, y=1.0)
-            plt.tight_layout(rect=[0, 0.03, 1, 0.97])
-            save_path = os.path.join(self.results_dir, f'attack_comparison_{metric}.png')
-            plt.savefig(save_path)
-            plt.close(fig)
-            logging.info(f"Impact comparison plot saved to {save_path}")
-
-        # Test passes if plots are generated without fatal errors.
-        self.assertTrue(True) # Primarily visual inspection needed
-'''
 
 if __name__ == '__main__':
     # Allows running the tests directly

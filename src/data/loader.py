@@ -7,9 +7,24 @@ import pandas as pd
 import numpy as np
 import os
 from typing import Tuple, List, Optional
+current_dir = os.path.dirname(os.path.abspath(__file__))
+root_dir = os.path.abspath(os.path.join(current_dir, os.pardir, os.pardir))
+data_dir = r'data\raw'
+ausgridPath1 = os.path.join(root_dir, data_dir ,r"2010-2011 Solar home electricity data.csv")
+ausgridPath2 = os.path.join(root_dir, data_dir ,r"2011-2012 Solar home electricity data v2.csv")
+ausgridPath3 = os.path.join(root_dir, data_dir ,r"2012-2013 Solar home electricity data v2.csv")
+ausgrid_dirs = [ausgridPath1, ausgridPath2, ausgridPath3]
+sgcc_data_path = os.path.join(root_dir, data_dir, r"data.csv")
+
+# test if the paths exist
+for path in [*ausgrid_dirs, sgcc_data_path]:
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Path does not exist: {path}")
+
+
 
 def load_sgcc_data(
-    filepath: str,
+    filepath: str = sgcc_data_path,
     na_threshold_ratio: float = 0.6,
     perform_basic_cleaning: bool = True
 ) -> Tuple[pd.DataFrame, pd.Series]:
@@ -43,7 +58,7 @@ def load_sgcc_data(
 
     if perform_basic_cleaning:
         # Basic NA handling: fill forward limit 1, then check row-wise NA ratio
-        data = data.fillna(method='ffill', limit=1)
+        data = data.ffill(limit=1)
         data['na_percentage'] = data.isna().sum(axis=1) / data.shape[1]
         data = data[data['na_percentage'] <= na_threshold_ratio]
         data = data.drop(columns=['na_percentage'])
@@ -108,6 +123,7 @@ def _prepare_ausgrid_dataframe(df: pd.DataFrame, date_format_code: int = 1) -> p
     if 'Row Quality' in df.columns:
         df = df.drop(columns=['Row Quality'])
 
+
     # Melt dataframe to long format
     df_melt = df.melt(id_vars=['Customer', 'date'], var_name='time', value_name='value')
 
@@ -145,8 +161,7 @@ def _prepare_ausgrid_dataframe(df: pd.DataFrame, date_format_code: int = 1) -> p
 
 
 def load_ausgrid_data(
-    dir_paths: List[str],
-    filenames: List[str] = ['ausgrid2010.csv', 'ausgrid2011.csv', 'ausgrid2012.csv'],
+    dir_paths: List[str] = ausgrid_dirs,
     date_formats: List[int] = [0, 1, 1] # 0 for 2010, 1 for 2011, 1 for 2012
 ) -> pd.DataFrame:
     """
@@ -167,12 +182,11 @@ def load_ausgrid_data(
         FileNotFoundError: If any specified CSV file is not found.
         ValueError: If lists dir_paths, filenames, and date_formats have different lengths.
     """
-    if not (len(dir_paths) == len(filenames) == len(date_formats)):
-        raise ValueError("Lists dir_paths, filenames, and date_formats must have the same length.")
+    if not (len(dir_paths) == len(date_formats)):
+        raise ValueError("Lists dir_paths and date_formats must have the same length.")
 
     all_dfs = []
-    for i, dir_path in enumerate(dir_paths):
-        filepath = os.path.join(dir_path, filenames[i])
+    for i, filepath in enumerate(dir_paths):
         if not os.path.exists(filepath):
             raise FileNotFoundError(f"Ausgrid file not found: {filepath}")
 
@@ -200,7 +214,10 @@ def load_ausgrid_data(
 
 
 if __name__ == "__main__":
-    sgcc_data_path = r"C:\Users\emran\syntheticAtts\SyntheticAttModelsSG\data\raw\sgcc_data.csv"
+    
+
+
+
     try:
         sgcc_df, sgcc_labels = load_sgcc_data(sgcc_data_path)
         print("SGCC Data Loaded:")
@@ -213,12 +230,10 @@ if __name__ == "__main__":
         print(e)
     except ValueError as e:
         print(e)
+    # change the .. to the root directory of the project. root_dir
+    
+    
 
-    ausgrid_dirs = [
-        r'C:\Users\emran\syntheticAtts\SyntheticAttModelsSG\data\raw\ausgrid\ausgrid2010',
-        r'C:\Users\emran\syntheticAtts\SyntheticAttModelsSG\data\raw\ausgrid\ausgrid2011',
-        r'C:\Users\emran\syntheticAtts\SyntheticAttModelsSG\data\raw\ausgrid\ausgrid2012'
-    ]
     try:
         ausgrid_df = load_ausgrid_data(ausgrid_dirs)
         print("\nAusgrid Data Loaded:")
@@ -229,3 +244,5 @@ if __name__ == "__main__":
         print(e)
     except ValueError as e:
         print(e)
+
+

@@ -27,9 +27,4 @@ tqdm>=4.60
 # HDF5 File Support (needed by pandas.to_hdf/read_hdf)
 tables>=3.6 # PyTables backend for HDF5
 
-# Optional: If using specific features from DTAIDistance in other parts
-# dtaidistance
 
-# Optional: For packaging itself
-# setuptools
-# wheel

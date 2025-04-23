@@ -18,8 +18,193 @@ import numpy as np
 import random
 from typing import Union
 
+
 from .base import BaseAttackModel
 from experiments.config import ATTACK_CONSTANTS # Import the constants
+import numpy as np
+
+import pandas as pd
+from collections import defaultdict
+from typing import Dict, List, Union
+import pandas as pd
+from typing import Union
+
+def redistribute_consumption(
+    df: pd.DataFrame,
+    ratio: float = 0.4,
+    in_place: bool = False
+) -> pd.DataFrame:
+    """
+    1. Build a Series of each user's total consumption in `df`.
+    2. For every (row-)user *i*, find another user *j* whose total
+       consumption `total[j]` is **≤ ratio * total[i]`**, but is
+       as large as possible among the candidates.
+    3. Replace the *values* of row *i* with row *j*'s values
+       (row copy, same shape).
+    4. If no such *j* exists, zero-out row *i*.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Slice of shape (n_users, n_days) you obtained from `result`.
+    ratio : float, default 0.4
+        The cut-off fraction (`total[j] ≤ ratio * total[i]`).
+    in_place : bool, default False
+        • False → work on a copy and return it (original stays intact).
+        • True  → modify `df` directly and return it (handy in pipelines).
+
+    Returns
+    -------
+    pd.DataFrame
+        The slice after row replacements.
+    """
+    # ------------------------------------------------------------------
+    # 1. Total kWh per user
+    totals = df.sum(axis=1)           # Series indexed by user id
+    if totals.empty:                  # safety for empty slices
+        return df
+
+    # copy or view?
+    target = df if in_place else df.copy()
+
+    # cache original rows so replacements all reference the *original* values
+    original_rows = df.to_dict(orient="index")
+
+    # ------------------------------------------------------------------
+    # 2-4. Row-by-row replacement
+    for user, my_sum in totals.items():
+        # find candidates strictly below me but ≥ 0 (could equal if ratio ≥ 1)
+        mask = (totals <= my_sum * ratio) & (totals <  my_sum)
+        candidates = totals[mask]
+
+        if not candidates.empty:
+            donor = candidates.idxmax()              # biggest feasible donor
+            target.loc[user] = original_rows[donor]  # 3. replace values
+        else:
+            target.loc[user] = 0.0                   # 4. no donor → zeros
+
+    return target
+
+def build_group_period_slices(
+    data: pd.DataFrame,
+    users_per_group: int = 100,
+    period: str = "M",                 # "M" = month-year, "D" = exact date, etc.
+    orientation: str = "group-first"   # or "period-first"
+) -> Dict[int, Dict[pd.Period, pd.DataFrame]]:
+    """
+    Split a wide time-series DataFrame into (group_id ▸ period ▸ DataFrame) slices.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        Rows are consumers; columns are daily timestamps.
+    users_per_group : int, default 100
+        Number of consumers in each group.
+    period : str, default "M"
+        Pandas offset alias to group columns into periods.
+        • "M" → month-year  (2014-05, 2014-06, …)
+        • "D" → keep exact dates (one period per column)
+        • any valid `to_period()` freq works ("Q", "Y", etc.).
+    orientation : {"group-first", "period-first"}, default "group-first"
+        Return structure:
+        • "group-first": result[group_id][period]  -> DataFrame
+        • "period-first": result[period][group_id] -> DataFrame
+
+    Returns
+    -------
+    dict
+        Nested dictionaries of DataFrame slices.
+    """
+    # 1 ── build consumer groups ------------------------------------------------
+    n = len(data)
+    base_groups = n // users_per_group
+    group_ids: Dict[int, List[int]] = {
+        gid: data.index[gid*users_per_group : (gid+1)*users_per_group].tolist()
+        for gid in range(base_groups)
+    }
+    # tack any leftovers onto the previous group
+    if n % users_per_group:
+        leftovers = data.index[base_groups*users_per_group : ].tolist()
+        group_ids.setdefault(base_groups - 1, []).extend(leftovers)
+
+    # 2 ── convert the column index to the requested Period granularity ---------
+    periods = data.columns.to_series().dt.to_period(period)
+    unique_periods = periods.unique()
+
+    # 3 ── carve out DataFrame slices ------------------------------------------
+    make_store = lambda: defaultdict(dict)  # convenience
+    if orientation == "group-first":
+        result: Dict[int, Dict[pd.Period, pd.DataFrame]] = make_store()
+        for gid, ridx in group_ids.items():
+            gdf = data.loc[ridx]                  # subset rows
+            for p in unique_periods:
+                result[gid][p] = gdf.loc[:, periods == p]
+    else:  # period-first
+        result: Dict[pd.Period, Dict[int, pd.DataFrame]] = make_store()
+        for p in unique_periods:
+            cidx = periods == p                   # subset columns once
+            for gid, ridx in group_ids.items():
+                result[p][gid] = data.loc[ridx, cidx]
+
+    return result
+
+
+def redistribute_consumption_fast(df: pd.DataFrame, ratio: float = 0.4,
+                                  in_place: bool = False) -> pd.DataFrame:
+    """
+    Same semantics as your original function but *O(n log n)* and 100 %
+    NumPy inside the hot path.
+    """
+    if df.empty:
+        return df
+
+    tgt = df if in_place else df.copy()
+    vals  = tgt.values                 # (n_users, n_cols) float64
+    sums  = vals.sum(axis=1)           # (n_users,)
+    
+    idx_sorted       = np.argsort(sums)               # ascending totals
+    sorted_totals    = sums[idx_sorted]               # view
+    thresholds       = sums * ratio                   # each user’s limit
+
+    # donor position for every user (binary search on the sorted totals)
+    pos = np.searchsorted(sorted_totals, thresholds, side="right") - 1
+    donors = idx_sorted[pos]                          # candidate indices
+
+    # users whose own total is <= ratio*total (self or equal) need a new donor
+    no_donor = (pos < 0) | (sorted_totals[pos] >= sums)
+    
+    # --- assemble the output array -----------------------------------
+    donor_rows = vals[donors]                         # (n_users, n_cols)
+    vals[:]    = donor_rows                           # broadcast copy
+    vals[no_donor] = 0.0                              # zero‑out where needed
+    return tgt
+
+def apply_attack12(data: pd.DataFrame,
+                   group_size: int,
+                   period: str,
+                   ratio: float) -> pd.DataFrame:
+    out = data.copy(deep=True)                       # full copy once
+    periods = out.columns.to_series().dt.to_period(period)
+    period_codes, _ = pd.factorize(periods, sort=False)
+    unique_periods = np.unique(period_codes)
+
+    n = len(out)
+    for g_start in range(0, n, group_size):
+        rows = slice(g_start, min(g_start + group_size, n))
+        for p in unique_periods:
+            cols_mask = period_codes == p            # Boolean 1‑D mask
+
+            # --- work on a *copy* of the block -------------------------
+            block = out.iloc[rows, cols_mask].copy()
+            redistribute_consumption_fast(block, ratio=ratio, in_place=True)
+
+            # --- write the modified values back ------------------------
+            out.iloc[rows, cols_mask] = block.values
+
+    return out
+
+
+
 def week_in_month_year(dates: pd.Series) -> pd.Series:
     """
     Get a unique identifier for weeks that respects year and month boundaries.
@@ -87,8 +272,7 @@ class AttackType2(BaseAttackModel):
         series_copy = series.copy() # Work on a copy to use .update safely
         window_size = ATTACK_CONSTANTS["AttackReading"]
         if len(series_copy.index) <= window_size:
-            # If series is too short, zero out everything or return as is?
-            # Original might error or behave unpredictably. Zeroing seems safer.
+            # If the series is too short, return it all zeroed out
             return series_copy * 0
         try:
              start = random.randint(0, len(series_copy.index) - window_size - 1)
@@ -105,7 +289,7 @@ class AttackType2(BaseAttackModel):
         return data.apply(self._core_attack_logic, axis=0)
 
 class AttackType3(BaseAttackModel):
-    """Attack Type 3: Apply per-cell random scaling (Original _attack3)"""
+    """Attack Type 3: Apply per-cell random scaling"""
     attack_id = "3"
 
     def _core_attack_logic(self, series: pd.Series) -> pd.Series:
@@ -264,71 +448,181 @@ class AttackType9(BaseAttackModel):
         return data.apply(self._core_attack_logic, axis=0)
 
 class AttackType10(BaseAttackModel):
-    """Attack Type 10: Reverse time order within each week (Original _attack10Month)"""
+    """
+    Attack Type 10: Reverses time order within temporal segments
+    
+    This attack model reverses the order of consumption values within each time segment
+    (week for daily data, day for higher-frequency data) while maintaining the overall
+    structure. This simulates a sophisticated theft technique that manipulates consumption
+    patterns to potentially take advantage of time-of-use pricing.
+    """
     attack_id = "10"
-    # Note: Original _attack10 reversed the whole series.
-    # The changeMonth function used _attack10Month logic for type 10.
 
-    def apply(self, data: pd.DataFrame) -> pd.DataFrame:
-        """Reverses the time order of consumption values within each week of the month."""
-        if not isinstance(data.index, pd.DatetimeIndex):
-             print("Warning: Attack Type 10 requires a DatetimeIndex. Attempting conversion.")
-             try:
-                  data.index = pd.to_datetime(data.index)
-             except Exception as e:
-                  print(f"Error converting index to DatetimeIndex for Attack 10: {e}. Returning original data.")
-                  raise ValueError("Index conversion failed.")
-
-        # Get readings for the first day in the dataset
-               
-
-        day_data = data.index.date[0]
-        len_day_data = len(data.index[data.index.date == day_data])
-        modified_data = data.copy()
-        # If readings per day > 32, it's likely Ausgrid (30-min intervals)
-        # Otherwise, it's likely SGCC (daily readings)
-        if len_day_data > 1:
-            print(f"ausgrid: data head {modified_data.head()}")
-            weekly_groups = modified_data.groupby(modified_data.index.date)
-            print(f"ausgrid: The number of grouped data is {len(weekly_groups)}")
-            print(f"ausgrid: groups mean is {weekly_groups.mean().head()}")
-        else:
-            print(f"SGCC: data head {modified_data.head()}")
-            weekly_groups = modified_data.groupby(week_in_month_year(modified_data.index))
-            print(f"SGCC: The number of grouped data is {len(weekly_groups)}")
-            print(f"SGCC: groups mean is {weekly_groups.mean().head()}")
-
-
-
+    def _validate_datetime_columns(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Validates and converts columns to DatetimeIndex if needed.
         
-        # Group by week number within the month
-        # Note: weekinmonth function assumes the index is a DatetimeIndex and that the dataset is sgcc
+        Args:
+            data: DataFrame with potential datetime columns
+            
+        Returns:
+            DataFrame with datetime columns
+            
+        Raises:
+            ValueError: If columns cannot be converted to datetime
+        """
+        if not isinstance(data.columns, pd.DatetimeIndex):
+            try:
+                data = data.copy()
+                data.columns = pd.to_datetime(data.columns)
+                return data
+            except Exception as e:
+                raise ValueError(f"Column conversion to datetime failed: {e}")
+        return data
+    
+    def _determine_data_frequency(self, data: pd.DataFrame) -> str:
+        """
+        Determines if data has daily frequency (SGCC) or higher frequency (Ausgrid).
+        
+        Args:
+            data: DataFrame with datetime columns
+            
+        Returns:
+            String indicating data type: "daily" or "high_frequency"
+        """
+        if data.empty or len(data.columns) < 2:
+            return "unknown"
+            
+        # Sample the first day and count readings
+        first_day = data.columns[0].date()
+        columns_for_first_day = sum(col.date() == first_day for col in data.columns)
+        
+        return "daily" if columns_for_first_day <= 1 else "high_frequency"
+    
 
+    
+    def _get_week_groups(self, columns: pd.DatetimeIndex) -> dict:
+        """
+        Groups column indices by ISO calendar week.
+        Week key format: YYYY-Www where YYYY is *ISO year*.
+        """
+        week_groups: dict[str, list[int]] = {}
+        
+        for idx, ts in enumerate(columns):
+            iso = ts.isocalendar()          # (iso_year, iso_week, iso_day)
+            week_key = f"{iso[0]}-W{iso[1]:02d}"
+            week_groups.setdefault(week_key, []).append(idx)
+            
+        return week_groups
 
-        processed_weeks = []
-        original_indices = []
-        for week_num, week_data in weekly_groups:
-             if not week_data.empty:
-                  
-                  flipped_values = week_data.values[::-1] # Reverse the values for this week
-                  # Create a new DataFrame with flipped values but original index/columns for this week
-                  flipped_week = pd.DataFrame(flipped_values, index=week_data.index, columns=week_data.columns)
-                  processed_weeks.append(flipped_week)
-                  original_indices.extend(week_data.index.tolist()) # Keep track of indices
-
-        if not processed_weeks:
-             return data # Return original if no weeks processed
-
-        # Concatenate processed weeks and sort by original index to restore order
-        result_df = pd.concat(processed_weeks)
-        # Reindex based on the collected original indices to ensure perfect alignment
-        result_df = result_df.reindex(data.index)
-
-        # Handle potential NaNs introduced by reindexing if some weeks were empty/skipped
-        result_df = result_df.fillna(method='ffill').fillna(method='bfill').fillna(0)
-
-        return result_df
-
+    def _get_day_groups(self, columns: pd.DatetimeIndex) -> dict:
+        """
+        Groups column indices by day for high-frequency data.
+        
+        Args:
+            columns: DatetimeIndex of columns
+            
+        Returns:
+            Dictionary mapping days to lists of column indices
+        """
+        day_groups = {}
+        for i, col in enumerate(columns):
+            day = col.date()
+            if day not in day_groups:
+                day_groups[day] = []
+            day_groups[day].append(i)
+        return day_groups
+    
+    def _reverse_segment(self, data: pd.DataFrame, indices: list) -> None:
+        """
+        Reverses values within a segment (week or day) for all customers at once.
+        
+        Args:
+            data: DataFrame to modify (in-place)
+            indices: List of column indices to reverse
+        """
+        if len(indices) <= 1:
+            return  # Nothing to reverse
+            
+        # Sort indices to ensure chronological order
+        indices.sort(key=lambda i: data.columns[i])
+        # Get column names for this segment
+        segment_cols = [data.columns[i] for i in indices]
+        # Reverse and assign back in one operation
+        data.loc[:, segment_cols] = data.loc[:, segment_cols].iloc[:, ::-1].values
+    
+    def _process_daily_data(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Processes data with daily frequency (SGCC), reversing weeks.
+        
+        Args:
+            data: DataFrame with daily readings
+            
+        Returns:
+            DataFrame with reversed readings within each week
+        """
+        result = data.copy()
+        week_groups = self._get_week_groups(data.columns)
+        
+        # Process each week
+        for week_id, indices in week_groups.items():
+            self._reverse_segment(result, indices)
+            
+        return result
+    
+    def _process_high_frequency_data(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Processes data with high frequency (Ausgrid), reversing days.
+        
+        Args:
+            data: DataFrame with high-frequency readings
+            
+        Returns:
+            DataFrame with reversed readings within each day
+        """
+        result = data.copy()
+        day_groups = self._get_day_groups(data.columns)
+        
+        # Process each day
+        for day, indices in day_groups.items():
+            self._reverse_segment(result, indices)
+            
+        return result
+    
+    def apply(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Applies the attack by reversing time order within appropriate segments.
+        
+        Args:
+            data: Input DataFrame (customers as rows, datetime as columns)
+            
+        Returns:
+            DataFrame with reversed temporal segments
+            
+        Raises:
+            ValueError: If datetime conversion fails
+        """
+        try:
+            # Validate and prepare data
+            data = self._validate_datetime_columns(data)
+            
+            # Determine data frequency and process accordingly
+            frequency = self._determine_data_frequency(data)
+            
+            if frequency == "daily":
+                return self._process_daily_data(data)
+            elif frequency == "high_frequency":
+                return self._process_high_frequency_data(data)
+            else:
+                # Unknown frequency - log warning and return original
+                print("Warning: Unable to determine data frequency. Returning original data.")
+                return data.copy()
+                
+        except Exception as e:
+            print(f"Error in AttackType10: {e}")
+            # Return original data on error to avoid breaking pipeline
+            return data.copy()
+        
 
 class AttackType11(BaseAttackModel):
     """Attack Type 11: Redistribute energy from peak window (Original _attack11)"""
@@ -388,101 +682,73 @@ class AttackType11(BaseAttackModel):
 
 class AttackType12(BaseAttackModel):
     """
-    Attack Type 12: Swap consumption profiles based on sums within weeks (Original _attack12Month).
-
-    *** WARNING: This implementation attempts to replicate the complex logic of
-    the original `_attack12Month` and `_attack12`. It involves grouping by week,
-    calculating daily sums within each week for all consumers, finding a target
-    consumer with a lower sum for each original consumer, and swapping the daily
-    profile for that week. This logic is complex and sensitive to the exact daily
-    structure and consumer pool within the input `data` (assumed monthly).
-    Its behavior might differ from the original if the context or data differs.
-    Use with caution and verify its effects carefully. ***
+    Attack Type 12: Swap consumption profiles based on sums within weeks.
     """
     attack_id = "12"
+    ratio = ATTACK_CONSTANTS["attack12Factor"]
+    sgcc_group_size = ATTACK_CONSTANTS["sgcc_group_size"] # 500
+    ausgrid_group_size = ATTACK_CONSTANTS["ausgrid_group_size"] # 25
 
-    def _core_attack12_daily_swap(self, daily_df_week: pd.DataFrame) -> pd.DataFrame:
+    def _validate_datetime_columns(self, data: pd.DataFrame) -> pd.DataFrame:
         """
-        Performs the core daily profile swapping logic for a given week's data.
+        Validates and converts columns to DatetimeIndex if needed.
+        
         Args:
-            daily_df_week (pd.DataFrame): DataFrame for one week (Index=Time, Columns=Consumers).
+            data: DataFrame with potential datetime columns
+            
         Returns:
-            pd.DataFrame: DataFrame with profiles swapped for that week.
+            DataFrame with datetime columns
+            
+        Raises:
+            ValueError: If columns cannot be converted to datetime
         """
-        if daily_df_week.empty or daily_df_week.shape[1] <= 1:
-             return daily_df_week # Cannot swap if empty or only one consumer
+        if not isinstance(data.columns, pd.DatetimeIndex):
+            try:
+                data = data.copy()
+                data.columns = pd.to_datetime(data.columns)
+                return data
+            except Exception as e:
+                raise ValueError(f"Column conversion to datetime failed: {e}")
+        return data
+    def _determine_data_frequency(self, data: pd.DataFrame) -> str:
+        """
+        Determines if data has daily frequency (SGCC) or higher frequency (Ausgrid).
+        
+        Args:
+            data: DataFrame with datetime columns
+            
+        Returns:
+            String indicating data type: "daily" or "high_frequency"
+        """
+        if data.empty or len(data.columns) < 2:
+            return "unknown"
+            
+        # Sample the first day and count readings
+        first_day = data.columns[0].date()
+        columns_for_first_day = sum(col.date() == first_day for col in data.columns)
+        
+        return "daily" if columns_for_first_day <= 1 else "high_frequency"
+       
 
-        # Calculate daily sums for the week and sort consumers by sum
-        daily_sums = daily_df_week.sum(axis=0).sort_values() # Series: Index=Consumer, Value=Sum
-        factor = ATTACK_CONSTANTS["attack12Factor"]
-        attacked_df_week = daily_df_week.copy() # Create copy to modify
-
-        # For each consumer column in the original week data
-        for consumer_col in daily_df_week.columns:
-            current_sum = daily_sums.get(consumer_col, np.inf) # Get sum for this consumer
-
-            # Find potential swap targets: consumers with sum < current_sum / factor
-            # Exclude the consumer itself from potential targets
-            potential_targets = daily_sums[daily_sums < current_sum / factor].drop(consumer_col, errors='ignore')
-
-            if not potential_targets.empty:
-                # Select the target with the highest sum among the valid candidates
-                # (Original code picked index[-1] of filtered sorted list)
-                swap_target_consumer = potential_targets.index[-1]
-                # Replace the current consumer's data with the target's data FOR THIS WEEK
-                attacked_df_week[consumer_col] = daily_df_week[swap_target_consumer].values
-            # else: No suitable swap target found, keep original data for this consumer/week
-
-        return attacked_df_week
-
-
+        
     def apply(self, data: pd.DataFrame) -> pd.DataFrame:
-        """Applies the weekly profile swapping logic across the input month data."""
-        if not isinstance(data.index, pd.DatetimeIndex):
-             print("Warning: Attack Type 12 requires a DatetimeIndex. Attempting conversion.")
-             try:
-                  data.index = pd.to_datetime(data.index)
-             except Exception as e:
-                  print(f"Error converting index to DatetimeIndex for Attack 12: {e}. Returning original data.")
-                  return data
-             
-        modified_data = data.copy()
-        # Get readings for the first day in the dataset
-        day_data = data.index.day[0]
-        len_day_data = len(data.index[data.index.day == day_data])
-
-        # If readings per day > 32, it's likely Ausgrid (30-min intervals)
-        # Otherwise, it's likely SGCC (daily readings)
-        if len_day_data > 32:
-            weekly_groups = modified_data.groupby(modified_data.index.date)
+        data = self._validate_datetime_columns(data)
+        freq = self._determine_data_frequency(data)
+        
+        if freq == "daily":
+            gsize, period = self.sgcc_group_size, "M"     # month buckets
+        elif freq == "high_frequency":
+            gsize, period = self.ausgrid_group_size, "D"  # daily buckets
         else:
-            weekly_groups = modified_data.groupby(week_in_month_year(modified_data.index))
+            raise ValueError("Unknown data frequency")
 
+        return apply_attack12(
+            data,
+            group_size = gsize,
+            period     = period,
+            ratio      = self.ratio
+        )
 
-
-
-        
-        # Group by week number within the month
-        
-
-        processed_weeks = []
-        for week_num, week_data in weekly_groups:
-             if not week_data.empty:
-                  # Apply the core daily swapping logic to this week's data
-                  processed_week_data = self._core_attack12_daily_swap(week_data)
-                  processed_weeks.append(processed_week_data)
-             # else: Keep empty weeks as they are (will be handled by concat/reindex)
-
-        if not processed_weeks:
-             return data # Return original if no weeks were processed
-
-        # Concatenate processed weeks
-        result_df = pd.concat(processed_weeks)
-        # Reindex to match the original monthly DataFrame structure and fill gaps
-        result_df = result_df.reindex(data.index)
-        result_df = result_df.fillna(method='ffill').fillna(method='bfill').fillna(0) # Fill any NaNs
-
-        return result_df
 
 
 class AttackTypeIEEE(BaseAttackModel):
@@ -512,16 +778,3 @@ _ALL_ATTACK_CLASSES = [
     AttackType10, AttackType11, AttackType12, AttackTypeIEEE
 ]
 
-# --- Self-Correction/Verification ---
-# Check if all classes have unique string IDs
-all_ids = [cls().attack_id for cls in _ALL_ATTACK_CLASSES]
-if len(all_ids) != len(set(all_ids)):
-    # This should not happen with the current list unless IDs are duplicated
-    import collections
-    duplicates = [item for item, count in collections.Counter(all_ids).items() if count > 1]
-    raise RuntimeError(f"Duplicate attack_id found in implementations: {duplicates}")
-# Ensure all IDs are strings
-if not all(isinstance(id_val, str) for id_val in all_ids):
-     raise RuntimeError(f"Not all attack_ids are strings: {all_ids}")
-
-print(f"Successfully loaded and verified {len(_ALL_ATTACK_CLASSES)} attack model implementations.")

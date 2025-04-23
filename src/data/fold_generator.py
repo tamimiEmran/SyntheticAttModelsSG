@@ -6,7 +6,7 @@ Functions for creating, saving, loading, and retrieving k-fold cross-validation 
 import numpy as np
 import pickle
 import os
-from typing import List, Tuple, Union, Any
+from typing import List, Tuple, Union, Any, Optional
 
 def create_folds(
     items: List[Any],
