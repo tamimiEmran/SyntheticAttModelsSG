@@ -89,7 +89,7 @@ The project implements 14 different attack models that manipulate energy consump
 | 12 | Swaps consumption with lower-consuming user |
 | 13 | Intermittent energy theft or malfunction |
 
-For detailed descriptions of each attack model, see the [documentation](docs/attack_models.md).
+For detailed descriptions of each attack model, see the [documentation](docs/attack-models-doc.md).
 
 ## Citation
 
