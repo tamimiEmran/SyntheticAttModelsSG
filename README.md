@@ -35,14 +35,8 @@ pip install -e .
 The experiments are organized according to the research questions outlined in the paper:
 
 ```bash
-# Run experiment 1-2: Real vs. synthetic evaluation
-python -m experiments.experiment1
-
-# Run experiment 3-5: Attack model effectiveness
-python -m experiments.experiment2
-
-# Run experiment 6-9: Synthetic attacks analysis
-python -m experiments.experiment3
+# Run experiments by the referenced research question in the article as follows
+python -m experiments.RQ1
 ```
 
 ### Using Attack Models
