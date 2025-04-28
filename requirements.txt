@@ -1,30 +1,42 @@
-# requirements.txt
+# Core Data Handling & Analysis
+numpy>=1.21.0
+pandas>=1.3.0
+scipy>=1.7.0
 
-# Core Data Handling & Numerics
-numpy>=1.21 # Widely used, specify a reasonable minimum
-pandas>=1.3 # For dataframes
-scipy>=1.7 # For stats (skew, kurtosis, iqr)
+# Machine Learning
+scikit-learn>=1.0.0
+xgboost>=1.5.0
+catboost>=1.0.0
+imbalanced-learn>=0.9.0
 
-# Machine Learning Models
-scikit-learn>=1.0 # For SVM, RF, KNN, PCA, Scalers, metrics, model_selection
-xgboost>=1.5 # XGBoost model
-catboost>=1.0 # CatBoost model
-# intel-extension-for-sklearn # Optional, was used in original for patching
-
-# Imbalanced Data Handling
-imbalanced-learn>=0.9 # For SMOTE, ADASYN
+# Deep Learning (for CNN-LSTM models)
+tensorflow>=2.8.0
+keras>=2.8.0
 
 # Hyperparameter Tuning
-optuna>=2.10 # For hyperparameter optimization
+optuna>=2.10.0
 
-# Plotting & Visualization
-matplotlib>=3.4
-seaborn>=0.11 # For heatmaps, enhanced plots
+# Visualization
+matplotlib>=3.4.0
+seaborn>=0.11.0
 
-# Progress Bars
-tqdm>=4.60
+# Progress Tracking
+tqdm>=4.60.0
 
-# HDF5 File Support (needed by pandas.to_hdf/read_hdf)
-tables>=3.6 # PyTables backend for HDF5
+# File Storage
+tables>=3.6.0  # For HDF5 support
+h5py>=3.6.0
 
+# Utility
+joblib>=1.1.0
+pickle5>=0.0.11; python_version < '3.8'
 
+# Jupyter for interactive development
+jupyter>=1.0.0
+notebook>=6.4.0
+
+# Type hints support
+typing-extensions>=4.0.0
+
+# Testing
+pytest>=7.0.0

@@ -13,9 +13,16 @@ class KNNModel(BaseModel):
 
     def _build_model(self) -> KNeighborsClassifier:
         """Builds the KNeighborsClassifier with stored parameters."""
-        default_params = {'n_jobs': -1} # Use all available cores
-        final_params = {**default_params, **self.params}
-        return KNeighborsClassifier(**final_params)
+        if self.to_hypertune:
+            params = super().hypertune("KNN")
+            default_params = {'n_jobs': -1}
+            final_params = {**default_params, **params} # User params override defaults
+            return KNeighborsClassifier(**final_params)
+        
+        else:
+            default_params = {'n_jobs': -1} # Use all available cores
+            final_params = {**default_params, **self.params}
+            return KNeighborsClassifier(**final_params)
 
     def fit(self, X: np.ndarray, y: np.ndarray, **kwargs):
         """

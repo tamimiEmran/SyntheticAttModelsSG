@@ -13,9 +13,17 @@ class RandomForestModel(BaseModel):
 
     def _build_model(self) -> RandomForestClassifier:
         """Builds the RandomForestClassifier with stored parameters."""
-        default_params = {'random_state': 42, 'n_jobs': -1} # Use all available cores
-        final_params = {**default_params, **self.params}
-        return RandomForestClassifier(**final_params)
+        
+        if self.to_hypertune:
+            params = super().hypertune("RF")
+            default_params = {'random_state': 42, 'n_jobs': -1}
+            final_params = {**default_params, **params} # User params override defaults
+            return RandomForestClassifier(**final_params)
+
+        else: 
+            default_params = {'random_state': 42, 'n_jobs': -1} # Use all available cores
+            final_params = {**default_params, **self.params}
+            return RandomForestClassifier(**final_params)
 
     def fit(self, X: np.ndarray, y: np.ndarray, **kwargs):
         """

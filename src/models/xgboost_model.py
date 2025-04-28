@@ -13,9 +13,16 @@ class XGBoostModel(BaseModel):
 
     def _build_model(self) -> xgb.XGBClassifier:
         """Builds the XGBClassifier with stored parameters."""
-        default_params = {'random_state': 42, 'use_label_encoder': False, 'eval_metric': 'logloss'}
-        final_params = {**default_params, **self.params}
-        return xgb.XGBClassifier(**final_params)
+        if self.to_hypertune:
+            params = super().hypertune("xgboost")
+            default_params = {'random_state': 42}
+            final_params = {**default_params, **params}
+            return xgb.XGBClassifier(**final_params)
+
+        else:
+            default_params = {'random_state': 42}
+            final_params = {**default_params, **self.params}
+            return xgb.XGBClassifier(**final_params)
 
     def fit(self, X: np.ndarray, y: np.ndarray, **kwargs):
         """

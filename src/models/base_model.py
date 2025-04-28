@@ -5,6 +5,7 @@ Defines the abstract base class for all machine learning models.
 from abc import ABC, abstractmethod
 import numpy as np
 from typing import Dict, Any, Optional
+from .hypertune import models as hypertune_models
 
 class BaseModel(ABC):
     """
@@ -14,7 +15,7 @@ class BaseModel(ABC):
     saving/loading models.
     """
 
-    def __init__(self, params: Optional[Dict[str, Any]] = None):
+    def __init__(self, params: Optional[Dict[str, Any]] = None, validationTuple: Optional[tuple[np.ndarray, np.ndarray]] = None, hypertuningParamsKeyName: Optional[str] = None):
         """
         Initializes the model.
 
@@ -23,7 +24,32 @@ class BaseModel(ABC):
                                               Defaults to None for default params.
         """
         self.params = params if params is not None else {}
+        if validationTuple is not None:
+            if hypertuningParamsKeyName is None: 
+                #hash a random seed from the validation tuple to use as a key
+                self.hypertuningParamsKeyName = str(hash(validationTuple[0].tobytes() + validationTuple[1].tobytes()))
+            else:
+                self.hypertuningParamsKeyName = hypertuningParamsKeyName
+            self.params = self.hypertune()
+
+
+            validation_tuple = self.validationTuple
+            hpKey = self.hypertuningParamsKeyName
+
+            hypertuner = hypertune_models(
+            validation_tuple= validation_tuple,
+            real_or_synthetic= hpKey
+            )
+
+            self.to_hypertune = True 
+        
+        else:
+            self.to_hypertune = False
+        
+        
         self.model = self._build_model() # Concrete classes build their specific model
+            
+
 
     @abstractmethod
     def _build_model(self) -> Any:
@@ -33,7 +59,10 @@ class BaseModel(ABC):
 
         Returns:
             Any: The instantiated model object (e.g., CatBoostClassifier).
+
         """
+
+
         pass
 
     @abstractmethod
@@ -85,6 +114,10 @@ class BaseModel(ABC):
         self.params = params
         self.model = self._build_model()
 
-    # Add save/load methods here if implementing a common serialization strategy
-    # def save(self, filepath: str): ...
-    # def load(self, filepath: str): ...
+    def get_tuned_params(self, name) -> Dict[str, Any]:
+        """Returns the tuned parameters after hypertuning."""
+
+        return self.hypertuner.parameters_of(name)
+        
+
+

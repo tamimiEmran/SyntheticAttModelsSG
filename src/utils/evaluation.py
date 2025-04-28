@@ -1,6 +1,70 @@
+from __future__ import annotations
 import numpy as np
 import pandas as pd
+import numpy as np
+from typing import Iterable, Tuple, Dict
+from typing import Callable, Dict
+from sklearn.metrics import (
+    roc_auc_score, average_precision_score, log_loss
+)
+from sklearn.metrics import (
+    f1_score,
+    accuracy_score,
+    precision_score,
+    recall_score,
+)
 
+def optimal_threshold(
+    y_true:     np.ndarray,
+    y_pred_prob: np.ndarray,
+    *,
+    metric: str = "f1",
+    thresholds: Iterable[float] | None = None,
+    return_metrics: bool = False,
+) -> float | Tuple[float, Dict[str, float]]:
+    
+    if thresholds is None:
+        thresholds = np.linspace(0.0, 1.0, 10_001)
+
+    best_thr     = 0.5
+    best_val     = -np.inf
+    metric_funcs = dict(
+        f1        = lambda y, p: f1_score(y, p, zero_division=0),
+        accuracy  = accuracy_score,
+        precision = lambda y, p: precision_score(y, p, zero_division=0),
+        recall    = lambda y, p: recall_score(y, p, zero_division=0),
+    )
+    if metric not in metric_funcs:
+        raise ValueError(
+            f"`metric` must be one of {list(metric_funcs)}; got {metric!r}"
+        )
+
+    for thr in thresholds:
+        preds  = y_pred_prob >= thr
+        val    = metric_funcs[metric](y_true, preds)
+        if val > best_val:
+            best_val, best_thr = val, thr
+
+    if not return_metrics:
+        return float(best_thr)
+
+    final_preds = y_pred_prob >= best_thr
+    metrics_dict = dict(
+        threshold = float(best_thr),
+        f1        = f1_score(y_true, final_preds, zero_division=0),
+        accuracy  = accuracy_score(y_true, final_preds),
+        precision = precision_score(y_true, final_preds, zero_division=0),
+        recall    = recall_score(y_true, final_preds, zero_division=0),
+    )
+    return best_thr, metrics_dict
+def compute_optimal_threshold(
+    y_val: np.ndarray,
+    p_val: np.ndarray,
+    *,
+    metric: str = "f1",
+) -> float:
+
+    return optimal_threshold(y_val, p_val, metric=metric)
 
 def pad_and_stats_vec(month_vals: np.ndarray, days_per_example: int = 31):
     """
@@ -33,7 +97,6 @@ def predict_consumer_month_probs(
     """
     Vectorised, single-batch version of `predict_consumer_month_probs`.
     """
-    # ----- 1.  Group columns by month -------------------------------------
     periods = df.columns.to_period("M")
     unique_periods = periods.unique()
     
@@ -59,33 +122,30 @@ def predict_consumer_month_probs(
     
     X = np.vstack(X_parts)
     probs = model.predict_proba(X)[:, positive_class]
-
-    # ----- 3.  Wrap up in a tidy Series -----------------------------------
     idx = pd.MultiIndex.from_tuples(index_parts, names=["consumer_id", "period"])
     return pd.Series(probs, index=idx, name="probability").sort_index()
 
 
-from typing import Callable, Dict
-from sklearn.metrics import (
-    roc_auc_score, average_precision_score,
-    accuracy_score, log_loss
-)
 
-# ------------------------------------------------------------------
-# sensible defaults (feel free to swap / extend)
-# ------------------------------------------------------------------
-def _default_metrics() -> Dict[str, Callable[[np.ndarray, np.ndarray], float]]:
-    """
-    Returns a dictionary {metric_name: callable} where each callable has the
-    signature f(y_true, y_pred_prob) and returns a float.
-    """
+
+
+def _default_metrics(
+    *,                                     
+    threshold: float = 0.50                 
+) -> Dict[str, Callable[[np.ndarray, np.ndarray], float]]:
+
+    def bin_wrap(fn_bin):
+        thr = float(threshold)
+        return lambda y, p: fn_bin(y, p >= thr)
+
     return dict(
-        roc_auc        = roc_auc_score,
-        avg_precision  = average_precision_score,
-        accuracy       = lambda y, p: accuracy_score(y, p >= 0.5),
-        log_loss       = lambda y, p: log_loss(
-            y, np.c_[1 - p, p], labels=[0, 1]
-        ),
+        roc_auc       = roc_auc_score,
+        avg_precision = average_precision_score,
+        accuracy      = bin_wrap(accuracy_score),
+        f1            = bin_wrap(lambda y, b: f1_score(y, b, zero_division=0)),
+        precision     = bin_wrap(lambda y, b: precision_score(y, b, zero_division=0)),
+        recall        = bin_wrap(lambda y, b: recall_score(y, b, zero_division=0)),
+        log_loss      = lambda y, p: log_loss(y, np.c_[1 - p, p], labels=[0, 1]),
     )
 
 # ------------------------------------------------------------------
@@ -96,6 +156,7 @@ def evaluate_monthly(
     df: pd.DataFrame,
     labels: pd.Series,
     *,
+    validation_threshold: float = None,
     metrics: Dict[str, Callable] | None = None,
     days_per_example: int = 31,
     positive_class: int = 1,
@@ -126,14 +187,13 @@ def evaluate_monthly(
 
     return {name: fn(y_true, probs.to_numpy()) for name, fn in metrics.items()}
 
-# ------------------------------------------------------------------
-# 2.  Aggregate → one probability per consumer, then evaluate
-# ------------------------------------------------------------------
+
 def evaluate_aggregated(
     model,
     df: pd.DataFrame,
     labels: pd.Series,
     *,
+    validation_threshold: float = None,
     agg: str | Callable = "mean",          # mean, median, np.max, …
     metrics: Dict[str, Callable] | None = None,
     days_per_example: int = 31,

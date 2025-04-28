@@ -6,7 +6,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
-from typing import Tuple,List
+from typing import Tuple,List, Union
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
@@ -175,8 +175,9 @@ def create_monthly_examples(
     X = np.vstack(X_list)
     y = np.concatenate(y_list)
     return X, y
+
+
 def oversample(x, y):
     ada = ADASYN(sampling_strategy='minority', random_state=42)
     X_resampled, y_resampled = ada.fit_resample(x, y)
     return X_resampled, y_resampled
-

@@ -10,13 +10,19 @@ from .base_model import BaseModel
 
 class SVMModel(BaseModel):
     """Wrapper for the Scikit-learn SVC (Support Vector Classifier)."""
-
+    name = "SVM"
     def _build_model(self) -> SVC:
         """Builds the SVC with stored parameters."""
         # Ensure probability=True if predict_proba will be used
-        default_params = {'random_state': 42, 'probability': True}
-        final_params = {**default_params, **self.params}
-        return SVC(**final_params)
+        if self.to_hypertune:
+            params = super().hypertune("SVM")
+            default_params = {'random_state': 42, 'probability': True, 'kernel': 'linear'}
+            final_params = {**default_params, **params}
+            return SVC(**final_params)
+        else: 
+            default_params = {'random_state': 42, 'probability': True, 'kernel': 'linear'}
+            final_params = {**default_params, **self.params}
+            return SVC(**final_params)
 
     def fit(self, X: np.ndarray, y: np.ndarray, **kwargs):
         """
@@ -50,7 +56,4 @@ class SVMModel(BaseModel):
             raise AttributeError("predict_proba is not available when probability=False")
         return self.model.predict_proba(X)
 
-    # SVC has decision_function which might be useful too
-    def decision_function(self, X: np.ndarray) -> np.ndarray:
-        """Computes the decision function for the samples in X."""
-        return self.model.decision_function(X)
+

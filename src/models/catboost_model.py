@@ -7,16 +7,26 @@ from catboost import CatBoostClassifier
 from typing import Dict, Any, Optional
 
 from .base_model import BaseModel
-
 class CatBoostModel(BaseModel):
+    name = "catboost"
     """Wrapper for the CatBoost Classifier."""
-
     def _build_model(self) -> CatBoostClassifier:
         """Builds the CatBoostClassifier with stored parameters."""
         # Ensure common params like random_state and verbosity are handled
-        default_params = {'random_state': 42, 'verbose': False}
-        final_params = {**default_params, **self.params} # User params override defaults
-        return CatBoostClassifier(**final_params)
+        if self.to_hypertune is None:
+            self.to_hypertune = False
+        
+        to_hypertune = self.to_hypertune
+        if to_hypertune: 
+            params = super().hypertune("catboost")
+            default_params = {'random_state': 42, 'verbose': False, "loss_function":'Logloss'}
+            final_params = {**default_params, **params} 
+            return CatBoostClassifier(**final_params)
+
+        else: 
+            default_params = {'random_state': 42, 'verbose': False, "loss_function":'Logloss'}
+            final_params = {**default_params, **self.params} # User params override defaults
+            return CatBoostClassifier(**final_params)
 
     def fit(self, X: np.ndarray, y: np.ndarray, **kwargs):
         """
