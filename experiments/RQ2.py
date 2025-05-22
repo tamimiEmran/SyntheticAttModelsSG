@@ -41,7 +41,7 @@ all_results = {
 
 modelCLS = catboost_model.CatBoostModel
 
-model = modelCLS() 
+model = modelCLS()
 model_name = model.name
 results = ModelResult(name= "monthly_" + model_name)
 

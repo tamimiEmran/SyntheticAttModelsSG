@@ -65,7 +65,7 @@ def train_and_eval(fold, train_attacks, test_attacks):
         test_attackTypes  = test_attacks,
         random_state_base = BASE_RANDOM_STATE,
     )
-    model = MODEL_FACTORIES[MODEL_NAME]()
+    model = MODEL_FACTORIES[MODEL_NAME](validationTuple=ds.val)
     model.fit(ds.train.X, ds.train.y)
     y_pred = model.predict_proba(ds.test.X)
     auc    = evaluate_aggregated(ds.test.y, y_pred)["auc-roc"]

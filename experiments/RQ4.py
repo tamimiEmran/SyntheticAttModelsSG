@@ -72,7 +72,7 @@ def train_on_fold(
     real_ds  = combine_DatasetGroup(real_ds)        # train/val/test combined to be a single testset for the trained model on synthetic attacks
 
     # ---------------- model ----------------
-    model = catboost_model.CatBoostModel()
+    model = catboost_model.CatBoostModel(validationTuple=synth_ds.val)
     model.fit(synth_ds.train.X, synth_ds.train.y, verbose=False)
 
     # ---------------- test on real attacks (test split) ----------------

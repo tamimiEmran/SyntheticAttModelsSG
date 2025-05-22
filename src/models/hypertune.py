@@ -1,10 +1,17 @@
 
 from tqdm import tqdm
 import numpy as np
+from sklearnex import patch_sklearn
+patch_sklearn()
+
+
+
+
 from os.path import exists
 from xgboost import XGBClassifier
 from sklearn.svm import SVC
 from catboost import CatBoostClassifier
+from catboost import CatBoostError
 import optuna
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.model_selection import KFold
@@ -13,9 +20,11 @@ from sklearn.neighbors import KNeighborsClassifier
 import logging
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
+
+
 # constants
 n_trials = 100
-n_splits = 5
+n_splits = 3
 
 
 class models():
@@ -72,7 +81,7 @@ def categorical_boosting(validation_tuple, real_or_synthetic):
     validation_tuple = (X_val, Y_val)
 
     """
-    if real_or_synthetic not in ['synthetic', 'real']:
+    if not isinstance(real_or_synthetic, str):
         raise Exception('real_or_synthetic must either be synthetic or real')
 
     if not exists(f'catboost_parameters_{real_or_synthetic}.npy'):
@@ -173,7 +182,11 @@ def hypertune_catboost(validation_tuple):
 
             # Train the model
             model = CatBoostClassifier(**params)
-            model.fit(X_train_cv, y_train_cv)
+            try:
+                model.fit(X_train_cv, y_train_cv)
+            except CatBoostError as e:
+                raise optuna.exceptions.TrialPruned()  # fail-safe
+
 
             # Make predictions on the test data
             # y_pred_test = model.predict(X_test_cv)
@@ -318,11 +331,11 @@ def hypertune_SVM(validation_tuple):
     y_val = np.ravel(y_val)
     def objective(trial):
         params = {
-            "C": trial.suggest_loguniform("C", 1e-5, 1e2),
+            "C": trial.suggest_float("C", 1e-5, 1e2, log = True),
             "kernel": trial.suggest_categorical("kernel", ["linear", "poly", "rbf", "sigmoid"]),
             "degree": trial.suggest_int("degree", 1, 5),
             "gamma": trial.suggest_categorical("gamma", ["scale", "auto"]),
-            "coef0": trial.suggest_uniform("coef0", 0, 1),
+            "coef0": trial.suggest_float("coef0", 0, 1),
             # "shrinking": trial.suggest_categorical("shrinking", [True, False]),
             "probability": True,
             "random_state": 42,

@@ -58,7 +58,7 @@ for fold in range(1, 10):
 
         # train the model
         m_name = "CatBoost"
-        model = MODEL_FACTORIES[m_name]()
+        model = MODEL_FACTORIES[m_name](validationTuple=dataset.val)
         model_name = model.name
 
         time_start = time()

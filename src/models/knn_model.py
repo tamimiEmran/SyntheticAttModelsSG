@@ -3,6 +3,9 @@
 K-Nearest Neighbors (KNN) classification model wrapper.
 """
 import numpy as np
+from sklearnex import patch_sklearn
+patch_sklearn()
+
 from sklearn.neighbors import KNeighborsClassifier
 from typing import Dict, Any, Optional
 
@@ -14,7 +17,7 @@ class KNNModel(BaseModel):
     def _build_model(self) -> KNeighborsClassifier:
         """Builds the KNeighborsClassifier with stored parameters."""
         if self.to_hypertune:
-            params = super().hypertune("KNN")
+            params = self.hypertuner.parameters_of("KNN")
             default_params = {'n_jobs': -1}
             final_params = {**default_params, **params} # User params override defaults
             return KNeighborsClassifier(**final_params)

@@ -107,7 +107,7 @@ for fold in range(1, 11):
 
     for m_name, factory in MODEL_FACTORIES.items():
         # -------- a) train + test on synthetic ---------------------------
-        model_syn = factory()
+        model_syn = factory( validationTuple=syn_ds.val)
         t0 = time.time()
         model_syn.fit(syn_ds.train.X, syn_ds.train.y)
         train_time = time.time() - t0

@@ -52,7 +52,7 @@ all_results = {
 for fold in range(1, 10):
     dataset = ausgrid_set(fold=fold, attackTypes = ATTACK_TYPES_DEFAULT , random_state_base=42)
     for m_name, factory in MODEL_FACTORIES.items():
-        model = factory()
+        model = factory(validationTuple=dataset.val)
         model_name = model.name
         results = ModelResult(name=f"syntheticResults_trained_on_{m_name}_{model_name}_fold{fold}")
 

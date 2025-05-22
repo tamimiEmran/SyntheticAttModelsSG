@@ -18,7 +18,7 @@ class CatBoostModel(BaseModel):
         
         to_hypertune = self.to_hypertune
         if to_hypertune: 
-            params = super().hypertune("catboost")
+            params = self.hypertuner.parameters_of("catboost")
             default_params = {'random_state': 42, 'verbose': False, "loss_function":'Logloss'}
             final_params = {**default_params, **params} 
             return CatBoostClassifier(**final_params)

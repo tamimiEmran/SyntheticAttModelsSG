@@ -3,6 +3,9 @@
 Random Forest classification model wrapper.
 """
 import numpy as np
+from sklearnex import patch_sklearn
+patch_sklearn()
+
 from sklearn.ensemble import RandomForestClassifier
 from typing import Dict, Any, Optional
 
@@ -15,7 +18,7 @@ class RandomForestModel(BaseModel):
         """Builds the RandomForestClassifier with stored parameters."""
         
         if self.to_hypertune:
-            params = super().hypertune("RF")
+            params = self.hypertuner.parameters_of("RF")
             default_params = {'random_state': 42, 'n_jobs': -1}
             final_params = {**default_params, **params} # User params override defaults
             return RandomForestClassifier(**final_params)

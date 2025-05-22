@@ -3,6 +3,10 @@
 Support Vector Machine (SVM) classification model wrapper.
 """
 import numpy as np
+from sklearnex import patch_sklearn
+patch_sklearn()
+
+
 from sklearn.svm import SVC
 from typing import Dict, Any, Optional
 
@@ -15,7 +19,7 @@ class SVMModel(BaseModel):
         """Builds the SVC with stored parameters."""
         # Ensure probability=True if predict_proba will be used
         if self.to_hypertune:
-            params = super().hypertune("SVM")
+            params = self.hypertuner.parameters_of("SVM")
             default_params = {'random_state': 42, 'probability': True, 'kernel': 'linear'}
             final_params = {**default_params, **params}
             return SVC(**final_params)

@@ -6,7 +6,15 @@ from abc import ABC, abstractmethod
 import numpy as np
 from typing import Dict, Any, Optional
 from .hypertune import models as hypertune_models
+import pandas as pd
+from hashlib import sha256
+import os
+import sys
 
+current_dir = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(current_dir, os.pardir, os.pardir))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 class BaseModel(ABC):
     """
     Abstract Base Class for machine learning models.
@@ -27,17 +35,34 @@ class BaseModel(ABC):
         if validationTuple is not None:
             if hypertuningParamsKeyName is None: 
                 #hash a random seed from the validation tuple to use as a key
-                self.hypertuningParamsKeyName = str(hash(validationTuple[0].tobytes() + validationTuple[1].tobytes()))
+                _x = validationTuple.X
+                _y = validationTuple.y
+                # Convert to numpy arrays IF not already
+                if not isinstance(_x, np.ndarray):
+                    _x = _x.to_numpy()
+                if not isinstance(_y, np.ndarray):
+                    _y = _y.to_numpy()
+                # convert to bytes
+                _x = _x.tobytes()
+                _y = _y.tobytes()
+
+                self.hypertuningParamsKeyName = sha256(_x + _y).digest().hex()
+                print(f"Hypertuning key name: {self.hypertuningParamsKeyName}")
             else:
                 self.hypertuningParamsKeyName = hypertuningParamsKeyName
-            self.params = self.hypertune()
+            
+            assert not np.any(pd.isnull(validationTuple.X.to_numpy())), "NaN in X"
+            assert np.all(np.isfinite(validationTuple.X.to_numpy())), "Inf in X"
+            assert not np.any(pd.isnull(validationTuple.y)), "NaN in y"
+            # assert validationTuple.y is numpy array
+            assert isinstance(validationTuple.y, np.ndarray), "y is not numpy array"
 
 
-            validation_tuple = self.validationTuple
+            self.validation_tuple = validationTuple.X.to_numpy(), validationTuple.y
             hpKey = self.hypertuningParamsKeyName
 
-            hypertuner = hypertune_models(
-            validation_tuple= validation_tuple,
+            self.hypertuner = hypertune_models(
+            validation_tuple= self.validation_tuple,
             real_or_synthetic= hpKey
             )
 
@@ -48,7 +73,13 @@ class BaseModel(ABC):
         
         
         self.model = self._build_model() # Concrete classes build their specific model
-            
+        # move saved hyperparameters to hyperparameters directory
+
+        hyperparameters_dir = os.path.join(PROJECT_ROOT, 'hyperparameters')
+        for file in os.listdir(current_dir):
+            if file.endswith('.npy') and ("_parameters_" in file):
+                os.rename(os.path.join(current_dir, file), os.path.join(hyperparameters_dir, file))
+
 
 
     @abstractmethod

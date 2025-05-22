@@ -23,7 +23,7 @@ RESULTS_DIR = os.path.join(PROJECT_ROOT, 'results')
 PLOT_FILENAME = os.path.join(PROJECT_ROOT)
 
 # SET UP DATA
-dataset = sgcc_wholeConsumer()
+dataset = sgcc_wholeConsumer(val_frac=0.001)
 
 @dataclass
 class predictions:
@@ -43,9 +43,11 @@ all_results = {
 
 }
 
-for modelCLS in [catboost_model.CatBoostModel, svm_model.SVMModel, cnn_lstm.CNNLSTMModel][0:1]:
+for modelCLS in [catboost_model.CatBoostModel, svm_model.SVMModel, cnn_lstm.CNNLSTMModel][1:]:
     
-    model = modelCLS()  # Initialize the model with hypertuning set to False
+
+
+    model = modelCLS(validationTuple = dataset.val )
     model_name = model.name
     results = ModelResult(name=model_name)
     
@@ -89,6 +91,8 @@ for model_name, result in all_results.items():
     aucs[model_name] = eval_results.test.auc_roc
 
 
+
+# move saved hyperparameters to hyperparameters folder
 
 
 

@@ -63,7 +63,7 @@ for fold in range(1, 4):
             dataset = ausgrid_set(fold=fold, attackTypes= [], train_attackTypes = [train_attack_type], test_attackTypes=[test_attack_type] , random_state_base=42)
 
             m_name = "CatBoost"
-            model = MODEL_FACTORIES[m_name]()
+            model = MODEL_FACTORIES[m_name](validationTuple=dataset.val)
             model_name = model.name
 
             time_start = time()

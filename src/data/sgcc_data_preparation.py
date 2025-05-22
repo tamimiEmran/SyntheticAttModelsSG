@@ -28,7 +28,7 @@ import pickle
 import os
 import numpy as np
 import pandas as pd
-from preprocessing import create_monthly_examples, preprocess_tsg, oversample
+from .preprocessing import create_monthly_examples, preprocess_tsg, oversample
 from sklearn.model_selection import train_test_split
 # ---------------------------------------------------------------------------
 # Configuration
@@ -90,9 +90,9 @@ class labelsGroup:
 class DatasetGroup:
     """train / validation / test bundle"""
 
-    train: DatasetSplit
-    val: DatasetSplit
-    test: DatasetSplit
+    train: DatasetSplit = None 
+    val: DatasetSplit = None
+    test: DatasetSplit = None
     dataframe: dataframeGroup = None
     labels: labelsGroup = None
 
@@ -428,6 +428,20 @@ def combine_DatasetGroup(dataset: DatasetGroup) -> DatasetSplit:
     y_combined = np.concatenate([dataset.train.y, dataset.val.y, dataset.test.y], axis=0)
     return DatasetSplit(X_combined, y_combined)
 
+def combine_DatasetGroup_leave_for_threshold(dataset: DatasetGroup) -> DatasetGroup:
+    X_combined_no_val = np.concatenate([dataset.train.X, dataset.test.X], axis=0)
+    y_combined_no_val = np.concatenate([dataset.train.y, dataset.test.y], axis=0)
+
+    x_val, y_val = dataset.val.X, dataset.val.y
+
+    return DatasetGroup(
+        train= None,
+        test =DatasetSplit(X = X_combined_no_val, y = y_combined_no_val),
+        val = DatasetSplit(X = x_val, y = y_val)
+    )
+
+
+
 # to make a synthetic set
 # load the dataframe with the attack types.
 # preprocess it with the function `preprocess_tsg`. and create the monthly examples.
@@ -585,29 +599,30 @@ def sgcc_wholeConsumer(
         random_state=42
     )
 
-    train , val = train_test_split(
-        train,
-        test_size=val_frac,
-        stratify= labels.loc[train].values,
-        random_state=42
-    )
+
     
     train_df = preprocess_tsg(df = dataframe.loc[train])
-    val_df = preprocess_tsg(df = dataframe.loc[val])
-    # no cross contamination between train and test. Preprocessing is user based.
     test_df = preprocess_tsg(df = dataframe.loc[test])
     if to_oversample:
         X_train, y_train = oversample(
             x = train_df.to_numpy(),
             y = labels.loc[train].to_numpy()
         )
+    
+    X_train_final, X_val_final, y_train_final, y_val_final = train_test_split(
+    X_train, y_train,
+    test_size=val_frac,
+    stratify= y_train,
+    random_state=43
+    )
 
-    X_val, y_val = val_df, labels.loc[val].to_numpy()
+    X_val_final,   y_val_final = pd.DataFrame(X_val_final), y_val_final
+
     X_test, y_test = test_df, labels.loc[test].to_numpy()
 
     return DatasetGroup(
-        train=DatasetSplit(X_train, y_train),
-        val=DatasetSplit(X_val,   y_val),
+        train=DatasetSplit(X_train_final, y_train_final),
+        val=DatasetSplit(X_val_final,   y_val_final),
         test=DatasetSplit(X_test,  y_test),
         )
 

@@ -14,7 +14,7 @@ class XGBoostModel(BaseModel):
     def _build_model(self) -> xgb.XGBClassifier:
         """Builds the XGBClassifier with stored parameters."""
         if self.to_hypertune:
-            params = super().hypertune("xgboost")
+            params = self.hypertuner.parameters_of("xgboost")
             default_params = {'random_state': 42}
             final_params = {**default_params, **params}
             return xgb.XGBClassifier(**final_params)
